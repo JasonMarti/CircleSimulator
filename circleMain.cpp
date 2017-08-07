@@ -275,7 +275,7 @@ int main()
     int activeThreads = 0;
     int operationCount = 0;
 
-    cout << "making " << NUM_THREADS << " Threads." << endl;
+    cout << "using " << NUM_THREADS << " Threads." << endl;
 
     //calling each thread for calcuations
     for (double i = minX; i < maxX; i += GRANULARITY)
@@ -285,8 +285,8 @@ int main()
             if (activeThreads == NUM_THREADS)
             {
                 pthread_join(tid[joinIterator], NULL);
-                cout << "joinIterator: " << joinIterator << endl;
-                if (joinIterator < NUM_THREADS)
+               /*  cout << "joinIterator: " << joinIterator << endl; */
+                if (joinIterator < NUM_THREADS-1)
                 {
                     joinIterator++;
                 }
@@ -296,25 +296,39 @@ int main()
                 }
                 pthread_mutex_lock(&outputMutex);
                 cout << "thread: " << operationCount - NUM_THREADS << " joined." << endl;
-                pthread_mutex_unlock(&outputMutex);
+                pthread_mutex_unlock(&outputMutex); 
                 activeThreads--;
             }
 
             //filling thread arguments
 
+            pthread_mutex_lock(&outputMutex);
+
             args[createIterator].x = i;
+            cout << "\nargs[createIterator].x: " << args[createIterator].x << endl;
             args[createIterator].y = j;
+            cout << "args[createIterator].y: " << args[createIterator].y << endl;
             args[createIterator].id = operationCount;
+            cout << "args[createIterator].id: " << args[createIterator].id << endl;
+            cout << "tid: " << tid[createIterator] << endl;
+            cout << "createIterator: " << createIterator << endl << endl;
+            args[createIterator].coords = coordinates;
             operationCount++;
+            pthread_mutex_unlock(&outputMutex); 
 
             //creating threads
+/*             pthread_mutex_lock(&outputMutex);
+            cout << "running operation: " << operationCount << " on thread: " << tid[createIterator] << endl;
+            
+            pthread_mutex_unlock(&outputMutex); */
             pthread_create(&tid[createIterator], &attr, circleSimRunner, &args[createIterator]);
-            pthread_mutex_lock(&outputMutex);
-            cout << "creating thread: " << operationCount << endl;
+
             activeThreads++;
+
+            /* pthread_mutex_lock(&outputMutex);
             cout << "current activeThreads: " << activeThreads << "." << endl;
-            pthread_mutex_unlock(&outputMutex);
-            if (createIterator < NUM_THREADS)
+            pthread_mutex_unlock(&outputMutex); */
+            if (createIterator < NUM_THREADS-1)
             {
                 createIterator++;
             }
@@ -322,7 +336,6 @@ int main()
             {
                 createIterator = 0;
             }
-            cout << "looking for segfault*****************" << endl;
         }
     }
 
@@ -345,9 +358,11 @@ void *circleSimRunner(void *args)
 
     struct runnerArgs *localArgs = (runnerArgs *)args;
     pthread_mutex_lock(&outputMutex);
-    // UNCOMMENT cout << "in thread: " << localArgs->id << " at (" << localArgs->x << "," << localArgs->y << ")." << endl;
+    cout << "in thread: " << localArgs->id << " at (" << localArgs->x << "," << localArgs->y << ")." << endl;
     pthread_mutex_unlock(&outputMutex);
     //number of threads to find distances
+
+
     const int numbDistanceCalcs = localArgs->coords.size() - 1;
 
     vector<double> distance;
@@ -357,20 +372,25 @@ void *circleSimRunner(void *args)
     struct pointCoordinates point;
     center.x = localArgs->x;
     center.y = localArgs->y;
+    
     for (int i = 0; i < numbDistanceCalcs; i++)
     {
         point.x = localArgs->coords[i].x;
         point.y = localArgs->coords[i].y;
         distance.push_back(distanceCalc(center, point));
     }
-
+    
     //create largest circle possible, terminate if houses less than 50% and move the circle either
     //find the slope
 
     //if not possible anywhere move to the next furthest point
     //if there is just one solution present it, if mutiple, present smallest in area
     //starting from the center move along until
-    //move circle along the diagonal in .01 increments
+    //move circle along the diagonal in .01 increments 
+
+
+
+
     pthread_exit(0);
 }
 
