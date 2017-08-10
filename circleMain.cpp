@@ -12,6 +12,7 @@ Return: returns the coordinates of the center and radius of the circle
 #include <cmath>
 #include <iomanip>
 #include <pthread.h>
+#include <algorithm>
 
 using namespace std;
 
@@ -69,9 +70,14 @@ RETURN: double for the distance
 */
 double distanceCalc(pointCoordinates center, pointCoordinates point);
 
+/*
+
+*/
+double smallestCircle(vector<double> distance);
+
 //***MAIN***
 int main()
-{
+{ 
 
     //granularity constant for incremental step size
     const double GRANULARITY = .01;
@@ -277,10 +283,11 @@ int main()
 
     cout << "using " << NUM_THREADS << " Threads." << endl;
 
+
     //calling each thread for calcuations
-    for (double i = minX; i < maxX; i += GRANULARITY)
+    for (double i = minX; i <= maxX; i += GRANULARITY)
     {
-        for (double j = minY; j < maxY; j += GRANULARITY)
+        for (double j = minY; j <= maxY; j += GRANULARITY)
         {
             if (activeThreads == NUM_THREADS)
             {
@@ -303,7 +310,6 @@ int main()
             //filling thread arguments
 
             pthread_mutex_lock(&outputMutex);
-
             args[createIterator].x = i;
             cout << "\nargs[createIterator].x: " << args[createIterator].x << endl;
             args[createIterator].y = j;
@@ -313,11 +319,12 @@ int main()
             cout << "tid: " << tid[createIterator] << endl;
             cout << "createIterator: " << createIterator << endl << endl;
             args[createIterator].coords = coordinates;
+            args[createIterator].validCircles = &solutions;
             operationCount++;
             pthread_mutex_unlock(&outputMutex); 
 
             //creating threads
-/*             pthread_mutex_lock(&outputMutex);
+            /* REMOVE pthread_mutex_lock(&outputMutex);
             cout << "running operation: " << operationCount << " on thread: " << tid[createIterator] << endl;
             
             pthread_mutex_unlock(&outputMutex); */
@@ -339,6 +346,13 @@ int main()
         }
     }
 
+    for(int i = 0; i < NUM_THREADS; i++)
+    {
+        pthread_join(tid[i],NULL);
+    } 
+    int end = solutions.size()-1;
+    cout << "solution: " << solutions[end].x << "," << solutions[end].y << " | " << solutions[end].radius << endl;
+ 
     return 0;
 }
 
@@ -363,9 +377,10 @@ void *circleSimRunner(void *args)
     //number of threads to find distances
 
 
-    const int numbDistanceCalcs = localArgs->coords.size() - 1;
+    const int numbDistanceCalcs = localArgs->coords.size();
 
     vector<double> distance;
+    double radiusSolution = 0.0;
 
     //parameter structs for distance
     struct pointCoordinates center;
@@ -379,18 +394,35 @@ void *circleSimRunner(void *args)
         point.y = localArgs->coords[i].y;
         distance.push_back(distanceCalc(center, point));
     }
-    
-    //create largest circle possible, terminate if houses less than 50% and move the circle either
-    //find the slope
+  
 
-    //if not possible anywhere move to the next furthest point
-    //if there is just one solution present it, if mutiple, present smallest in area
-    //starting from the center move along until
-    //move circle along the diagonal in .01 increments 
-
-
-
-
+    struct circleAttr solutionCircle;
+    solutionCircle.x = localArgs->x;
+    solutionCircle.y = localArgs->y;
+    solutionCircle.radius = smallestCircle(distance);
+    pthread_mutex_lock(&solutionCheckMutex);
+    if(localArgs->validCircles->size() > 0)
+    {
+        if(localArgs->validCircles->operator[](localArgs->validCircles->size()-1).radius > solutionCircle.radius)
+        {
+            localArgs->validCircles->push_back(solutionCircle);
+        }
+    }
+    else
+    {
+        localArgs->validCircles->push_back(solutionCircle);
+    }
+    pthread_mutex_unlock(&solutionCheckMutex);
+    /* REMOVE pthread_mutex_lock(&outputMutex);
+    cout << "thread " << localArgs->id << "|: number of distances: " << distance.size() << "|: each distance: ";
+    for(int i = 0; i < distance.size(); i++)
+    {
+         
+        cout << distance[i] << " ";
+    }
+    cout << endl;
+    pthread_mutex_unlock(&outputMutex);
+ */
     pthread_exit(0);
 }
 
@@ -401,4 +433,38 @@ double distanceCalc(pointCoordinates center, pointCoordinates point)
     distance = sqrt(pow((center.x - point.x), 2) + pow((center.y - point.y), 2));
 
     return distance;
+}
+
+double smallestCircle(vector<double> distance)
+{
+    //int for storing the furthest point to be included.
+    int middle = 0;
+
+ /* REMOVE   pthread_mutex_lock(&outputMutex);
+    cout << "distance: ";
+    for(int i = 0; i < distance.size(); i++)
+    {
+        cout <<" " << i <<  ":" << distance[i] << " ";
+    }
+    \
+    cout << "distance after: ";
+    for(int i = 0; i < distance.size(); i++)
+    {
+        cout <<" " << i <<  ":" << distance[i] << " ";
+    }
+    pthread_mutex_unlock(&outputMutex); */
+    //sort the distances
+    sort(distance.begin(), distance.end());
+
+    //if even then just take the middle value
+    if(distance.size()%2 == 0)
+    {
+        middle = (distance.size() - 1) / 2;
+    }
+    else
+    {
+        middle = distance.size() / 2;
+    }
+
+    return distance[middle];
 }
