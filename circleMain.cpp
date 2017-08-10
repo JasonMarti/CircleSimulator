@@ -13,6 +13,9 @@ Return: returns the coordinates of the center and radius of the circle
 #include <iomanip>
 #include <pthread.h>
 #include <algorithm>
+#include <fstream>
+
+#define DEFAULT_THREADS_COUNT 8
 
 using namespace std;
 
@@ -71,76 +74,129 @@ RETURN: double for the distance
 double distanceCalc(pointCoordinates center, pointCoordinates point);
 
 /*
-
+PURPOSE: takes a vector of distances of different points and finds the radius of the smallest circle that encompases the median distance
+PARAMETERS: takes a vector of doubles with distances
+RETURN: returns a double with the value of the radius
 */
 double smallestCircle(vector<double> distance);
 
 //***MAIN***
-int main()
-{ 
+int main(int argc, char **argv)
+{
 
-    //granularity constant for incremental step size
-    const double GRANULARITY = .01;
+    //setting up start up variables with default settings
+    int NUM_THREADS = DEFAULT_THREADS_COUNT; //default number of threads used in calculation
+    double GRANULARITY = .01;                //default granularity for search space delta
+    bool readFile = false;                   //default to interactive input
 
-    //variables for holding user input
-    vector<pointCoordinates> coordinates;
-    int numbOfCoords = 0;
-    string userInputString = "";
-    string inputString;
-    const char *coordinateInput = NULL;
+    //support setup variables
+    int argvFileIterator = 0;             //used to keep track of where the file name is in argv
+    vector<pointCoordinates> coordinates; //used to hold all of the coordinates
 
     //variables for bounds of the space
     double xDistance = 0.0;
     double yDistance = 0.0;
 
-    //taking input from the user for number of coordinates
-    cout << "enter the number of coordinates.\n>>";
-    getline(cin, userInputString);
-    numbOfCoords = atoi(userInputString.c_str());
-
-    //number of threads, change to a commandline argument eventually
-    cout << "Enter number of threads: " << endl;
-    int temp = 8;
-    getline(cin, userInputString);
-    if(atoi(userInputString.c_str()) > 0)
+    //interpreting commandline arguments and making changes
+    if (argc != 1)
     {
-        temp = atoi(userInputString.c_str());
+        cout << "Starting Execution with default settings..." << endl;
     }
-    const int NUM_THREADS = temp; 
-
-    //taking input from the user for coordinates of each of the points
-    for (int i = 0; i < numbOfCoords; i++)
+    else
     {
-
-        cout << "please enter the coordinates for point " << i << " as  <x.x> <y.y>\n>>";
-
-        getline(cin, inputString);
-        char *pEnd;
-        coordinateInput = inputString.c_str();
-
-        if (coordinateInput != NULL)
+        for (int i = 0; i < argc - 1; i++)
         {
-            pointCoordinates insertStruct;
-            //believe in the user for sake of time, puts a safety 0.0 if nothing is there
-            //TODO don't add duplicate values, statement to the user about rentering coordinates.
-            insertStruct.x = (strtod(coordinateInput, &pEnd));
-            insertStruct.y = (strtod(pEnd, NULL));
-            insertStruct.id = i;
-            //coorecting values of 0 to 0.0 instead of close to 0
-            if (insertStruct.x < 0.000001 && insertStruct.x > -0.000001)
+            if (argv[i][0] == '-')
             {
-                insertStruct.x = 0.0;
+                switch (argv[i][1])
+                {
+                case 104: //-h
+                    if (strcmp(argv[i], "-help"))
+                    {
+                        cout << "usage: \n\t -t <num threads> \tChange the number of threads used, default 8.\n\t -help \tDisplays this menu. \n\t-f <filename> \t filename for a file with coordinates" << endl;
+                    }
+                    break;
+                case 116: //-t
+                    if (argc < i + 2)
+                    {
+                        cout << "Unable to parse arguments." << endl;
+                        return -1;
+                    }
+                    NUM_THREADS = atoi(argv[i + 1]);
+                    break;
+                case 102: //-f
+                    if (argc < i + 2)
+                    {
+                        cout << "Unable to parse arguments." << endl;
+                        return -1;
+                    }
+                    argvFileIterator = i + 1;
+                    readFile = true;
+                    break;
+                };
             }
-            if (insertStruct.y < 0.000001 && insertStruct.y > -0.000001)
-            {
-                insertStruct.y = 0.0;
-            }
-
-            //adding the coordinate to the vector
-            coordinates.push_back(insertStruct);
         }
     }
 
+    //taking iteractive input from the user.
+    if (!readFile)
+    {
+        //variables for holding user input
+
+        int numbOfCoords = 0;
+        string userInputString = "";
+        const char *coordinateInput = NULL;
+
+        //taking input from the user for number of coordinates
+        cout << "enter the number of coordinates.\n>>";
+        getline(cin, userInputString);
+        numbOfCoords = atoi(userInputString.c_str());
+
+        //taking input from the user for coordinates of each of the points
+        for (int i = 0; i < numbOfCoords; i++)
+        {
+
+            cout << "please enter the coordinates for point " << i << " as  <x.x> <y.y>\n>>";
+
+            getline(cin, userInputString);
+            char *pEnd;
+            coordinateInput = userInputString.c_str();
+
+            if (coordinateInput != NULL)
+            {
+                pointCoordinates insertStruct;
+                //believe in the user for sake of time, puts a safety 0.0 if nothing is there
+                //TODO don't add duplicate values, statement to the user about rentering coordinates.
+                insertStruct.x = (strtod(coordinateInput, &pEnd));
+                insertStruct.y = (strtod(pEnd, NULL));
+                insertStruct.id = i;
+                //coorecting values of 0 to 0.0 instead of close to 0
+                if (insertStruct.x < 0.000001 && insertStruct.x > -0.000001)
+                {
+                    insertStruct.x = 0.0;
+                }
+                if (insertStruct.y < 0.000001 && insertStruct.y > -0.000001)
+                {
+                    insertStruct.y = 0.0;
+                }
+
+                //adding the coordinate to the vector
+                coordinates.push_back(insertStruct);
+            }
+        }
+    }
+    else
+    {
+
+        ifstream fin;
+        
+        fin.open(argv[argvFileIterator]);
+        if(fin.fail())
+        {
+            cout << "unable to read input file " << argv[argvFileIterator] << "."; 
+        }
+        
+    }
     //setting up the number of threads needed by calculating the number of points to be examined by finding the highest x and y and the lowest x and y and checking all points inbetween.
     //possible speed up with a search heristic by starting with points and moving out radially
     double minX, minY, maxX, maxY;
@@ -255,7 +311,6 @@ int main()
     cout << "xD: " << xDistance << " yD: " << yDistance << endl;
 
     //calculate the needed number of threads
-    
 
     //vector for the thread arguments
     vector<runnerArgs> args;
@@ -283,7 +338,6 @@ int main()
 
     cout << "using " << NUM_THREADS << " Threads." << endl;
 
-
     //calling each thread for calcuations
     for (double i = minX; i <= maxX; i += GRANULARITY)
     {
@@ -292,8 +346,8 @@ int main()
             if (activeThreads == NUM_THREADS)
             {
                 pthread_join(tid[joinIterator], NULL);
-               /*  cout << "joinIterator: " << joinIterator << endl; */
-                if (joinIterator < NUM_THREADS-1)
+                /*  cout << "joinIterator: " << joinIterator << endl; */
+                if (joinIterator < NUM_THREADS - 1)
                 {
                     joinIterator++;
                 }
@@ -303,7 +357,7 @@ int main()
                 }
                 pthread_mutex_lock(&outputMutex);
                 cout << "thread: " << operationCount - NUM_THREADS << " joined." << endl;
-                pthread_mutex_unlock(&outputMutex); 
+                pthread_mutex_unlock(&outputMutex);
                 activeThreads--;
             }
 
@@ -317,11 +371,12 @@ int main()
             args[createIterator].id = operationCount;
             cout << "args[createIterator].id: " << args[createIterator].id << endl;
             cout << "tid: " << tid[createIterator] << endl;
-            cout << "createIterator: " << createIterator << endl << endl;
+            cout << "createIterator: " << createIterator << endl
+                 << endl;
             args[createIterator].coords = coordinates;
             args[createIterator].validCircles = &solutions;
             operationCount++;
-            pthread_mutex_unlock(&outputMutex); 
+            pthread_mutex_unlock(&outputMutex);
 
             //creating threads
             /* REMOVE pthread_mutex_lock(&outputMutex);
@@ -335,7 +390,7 @@ int main()
             /* pthread_mutex_lock(&outputMutex);
             cout << "current activeThreads: " << activeThreads << "." << endl;
             pthread_mutex_unlock(&outputMutex); */
-            if (createIterator < NUM_THREADS-1)
+            if (createIterator < NUM_THREADS - 1)
             {
                 createIterator++;
             }
@@ -346,13 +401,13 @@ int main()
         }
     }
 
-    for(int i = 0; i < NUM_THREADS; i++)
+    for (int i = 0; i < NUM_THREADS; i++)
     {
-        pthread_join(tid[i],NULL);
-    } 
-    int end = solutions.size()-1;
+        pthread_join(tid[i], NULL);
+    }
+    int end = solutions.size() - 1;
     cout << "solution: " << solutions[end].x << "," << solutions[end].y << " | " << solutions[end].radius << endl;
- 
+
     return 0;
 }
 
@@ -376,7 +431,6 @@ void *circleSimRunner(void *args)
     pthread_mutex_unlock(&outputMutex);
     //number of threads to find distances
 
-
     const int numbDistanceCalcs = localArgs->coords.size();
 
     vector<double> distance;
@@ -387,23 +441,22 @@ void *circleSimRunner(void *args)
     struct pointCoordinates point;
     center.x = localArgs->x;
     center.y = localArgs->y;
-    
+
     for (int i = 0; i < numbDistanceCalcs; i++)
     {
         point.x = localArgs->coords[i].x;
         point.y = localArgs->coords[i].y;
         distance.push_back(distanceCalc(center, point));
     }
-  
 
     struct circleAttr solutionCircle;
     solutionCircle.x = localArgs->x;
     solutionCircle.y = localArgs->y;
     solutionCircle.radius = smallestCircle(distance);
     pthread_mutex_lock(&solutionCheckMutex);
-    if(localArgs->validCircles->size() > 0)
+    if (localArgs->validCircles->size() > 0)
     {
-        if(localArgs->validCircles->operator[](localArgs->validCircles->size()-1).radius > solutionCircle.radius)
+        if (localArgs->validCircles->operator[](localArgs->validCircles->size() - 1).radius > solutionCircle.radius)
         {
             localArgs->validCircles->push_back(solutionCircle);
         }
@@ -440,7 +493,7 @@ double smallestCircle(vector<double> distance)
     //int for storing the furthest point to be included.
     int middle = 0;
 
- /* REMOVE   pthread_mutex_lock(&outputMutex);
+    /* REMOVE   pthread_mutex_lock(&outputMutex);
     cout << "distance: ";
     for(int i = 0; i < distance.size(); i++)
     {
@@ -457,7 +510,7 @@ double smallestCircle(vector<double> distance)
     sort(distance.begin(), distance.end());
 
     //if even then just take the middle value
-    if(distance.size()%2 == 0)
+    if (distance.size() % 2 == 0)
     {
         middle = (distance.size() - 1) / 2;
     }
