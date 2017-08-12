@@ -167,6 +167,7 @@ int main(int argc, char **argv)
                 pointCoordinates insertStruct;
                 //believe in the user for sake of time, puts a safety 0.0 if nothing is there
                 //TODO don't add duplicate values, statement to the user about rentering coordinates.
+                //TODO change this bit to be more inline with the file io
                 insertStruct.x = (strtod(coordinateInput, &pEnd));
                 insertStruct.y = (strtod(pEnd, NULL));
                 insertStruct.id = i;
@@ -180,20 +181,55 @@ int main(int argc, char **argv)
                     insertStruct.y = 0.0;
                 }
 
-                //adding the coordinate to the vector
+                //adding the coordinate to the coordinate vector
                 coordinates.push_back(insertStruct);
             }
         }
     }
+    //reading a list of points from a file
     else
     {
 
         ifstream fin;
-        
+        string fileInput = "";
+        int coordCount = 0;
         fin.open(argv[argvFileIterator]);
         if(fin.fail())
         {
-            cout << "unable to read input file " << argv[argvFileIterator] << "."; 
+            cout <<  "Error unable to read input file, exiting." << argv[argvFileIterator] << ".";
+            return -1;
+        }
+        else
+        {
+            //temporary struct to hold values to put into the coordinate vector
+            pointCoordinates insertStruct;
+            char *pEnd;
+            while(!fin.eof())
+            {
+                //file IO
+                getline(fin, fileInput);
+
+                insertStruct.x = (strtod(fileInput.c_str(), &pEnd));
+                insertStruct.y = (strtod(pEnd, NULL));
+                insertStruct.id = coordCount;
+                coordCount++;
+
+                //cleaning up input
+                if (insertStruct.x < 0.000001 && insertStruct.x > -0.000001)
+                {
+                    insertStruct.x = 0.0;
+                }
+                if (insertStruct.y < 0.000001 && insertStruct.y > -0.000001)
+                {
+                    insertStruct.y = 0.0;
+                }
+                
+                //adding coordinates to the coordinate vector
+                coordinates.push_back(insertStruct);
+
+            }
+
+
         }
         
     }
@@ -204,7 +240,7 @@ int main(int argc, char **argv)
     cout << "maxX: " << maxX << "|minX: " << minX << "|maxY: " << maxY << "|minY: " << minY << endl;
 
     //finding maximums in the coordinates vector
-    for (int i = 0; i < coordinates.size(); i++)
+    for (unsigned int i = 0; i < coordinates.size(); i++)
     {
         //setting starting values to first assigned in cases where the minimum is greater than 0 or the maximum is less than 0
         if (i == 0)
@@ -434,7 +470,6 @@ void *circleSimRunner(void *args)
     const int numbDistanceCalcs = localArgs->coords.size();
 
     vector<double> distance;
-    double radiusSolution = 0.0;
 
     //parameter structs for distance
     struct pointCoordinates center;
@@ -453,6 +488,7 @@ void *circleSimRunner(void *args)
     solutionCircle.x = localArgs->x;
     solutionCircle.y = localArgs->y;
     solutionCircle.radius = smallestCircle(distance);
+
     pthread_mutex_lock(&solutionCheckMutex);
     if (localArgs->validCircles->size() > 0)
     {
