@@ -14,6 +14,8 @@ Return: returns the coordinates of the center and radius of the circle
 #include <pthread.h>
 #include <algorithm>
 #include <fstream>
+#include <time.h>
+#include <chrono>
 
 #define DEFAULT_THREADS_COUNT 8
 
@@ -22,6 +24,7 @@ using namespace std;
 //***Struct definitions***
 pthread_mutex_t outputMutex;
 pthread_mutex_t solutionCheckMutex;
+pthread_mutex_t taskMutex;
 
 //used to hold the attributes of the circle
 struct circleAttr
@@ -44,10 +47,10 @@ struct pointCoordinates
 struct runnerArgs
 {
     int id;
-    vector<pointCoordinates> coords;  //copy of the locations for all of the coordinates
-    double x;                         //x value of the start of the circle
-    double y;                         //y value of the start of the circle
-    vector<circleAttr> *validCircles; //pointer to the vector that holds all of the successful circles
+    vector<pointCoordinates> coords;     //copy of the locations for all of the coordinates
+    vector<circleAttr> *validCircles;    //pointer to the vector that holds all of the successful circles
+    vector<pointCoordinates> *pointList; //point to the list of all points to check
+    int *currentTaskIterator;            //pointer to an int that represents the current point
 };
 
 //***function prototypes***
@@ -83,7 +86,10 @@ double smallestCircle(vector<double> distance);
 //***MAIN***
 int main(int argc, char **argv)
 {
-
+    //starting timer
+    //TODO: get a higher resolution timer
+    time_t time2;
+    time(&time2);
     //setting up start up variables with default settings
     int NUM_THREADS = DEFAULT_THREADS_COUNT; //default number of threads used in calculation
     double GRANULARITY = .01;                //default granularity for search space delta
@@ -368,11 +374,11 @@ int main(int argc, char **argv)
         yDistance = GRANULARITY;
     }
 
-    //vector for the thread arguments
-    vector<runnerArgs> args;
-
-    //vector to hold solution circles
-    vector<circleAttr> solutions;
+    //variables for the thread arguments
+    vector<runnerArgs> args;             //vector for the thread arguments
+    vector<circleAttr> solutions;        //vector to hold solution circles
+    vector<pointCoordinates> pointsList; //vector to hold all of the locations to try
+    int currentTask = 0;                 //int for the location of the next point to check
 
     //initalize the arguments vector
     for (int i = 0; i < NUM_THREADS; i++)
@@ -386,53 +392,29 @@ int main(int argc, char **argv)
     pthread_attr_init(&attr);
 
     //variable for traversal of the tid and args arrays and sequential id for the thread
-    int createIterator = 0;
-    int joinIterator = 0;
-    int activeThreads = 0;
-    int operationCount = 0;
+    struct pointCoordinates pointListInserter;
 
-    //TODO: change this so that it creates a queue of locations and pulls a location rather than calling a thread
-    //calling each thread for calcuations
+    //filling the vector with each point to check
     for (double i = minX; i <= maxX; i += GRANULARITY)
     {
         for (double j = minY; j <= maxY; j += GRANULARITY)
         {
-            if (activeThreads == NUM_THREADS)
-            {
-                pthread_join(tid[joinIterator], NULL);
-                if (joinIterator < NUM_THREADS - 1)
-                {
-                    joinIterator++;
-                }
-                else
-                {
-                    joinIterator = 0;
-                }
-                activeThreads--;
-            }
-
-            //filling thread arguments
-            args[createIterator].x = i;
-            args[createIterator].y = j;
-            args[createIterator].id = operationCount;
-            args[createIterator].coords = coordinates;
-            args[createIterator].validCircles = &solutions;
-            operationCount++;
-
-            //creating threads
-            pthread_create(&tid[createIterator], &attr, circleSimRunner, &args[createIterator]);
-            activeThreads++;
-
-            //keeping the create iterator in line with what threads need what
-            if (createIterator < NUM_THREADS - 1)
-            {
-                createIterator++;
-            }
-            else
-            {
-                createIterator = 0;
-            }
+            pointListInserter.x = i;
+            pointListInserter.y = j;
+            pointsList.push_back(pointListInserter);
         }
+    }
+
+    //set up arguments and call threads
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
+        args[i].coords = coordinates;               //coordinates vector
+        args[i].validCircles = &solutions;          //solutions vector
+        args[i].id = i;                             //local thread id
+        args[i].pointList = &pointsList;            //task list vector
+        args[i].currentTaskIterator = &currentTask; //current iterator for pointList
+
+        pthread_create(&tid[i], &attr, circleSimRunner, &args[i]);
     }
 
     for (int i = 0; i < NUM_THREADS; i++)
@@ -440,6 +422,10 @@ int main(int argc, char **argv)
         pthread_join(tid[i], NULL);
     }
     int end = solutions.size() - 1;
+    time_t time3;
+    time(&time3);
+    cout << "time taken: " << time3 - time2 << endl;
+    cout << "checked " << currentTask << " locations." << endl;
     cout << "solution: " << solutions[end].x << "," << solutions[end].y << " | " << solutions[end].radius << endl;
 
     return 0;
@@ -464,42 +450,70 @@ void *circleSimRunner(void *args)
     const int numbDistanceCalcs = localArgs->coords.size();
     vector<double> distance;
 
-    //parameter structs for distance
+    //structs for distance
     struct pointCoordinates center;
     struct pointCoordinates point;
-    center.x = localArgs->x;
-    center.y = localArgs->y;
-
-    //for collecting the distances from the center to each point in the distance 
-    for (int i = 0; i < numbDistanceCalcs; i++)
+    while (true)
     {
-        point.x = localArgs->coords[i].x;
-        point.y = localArgs->coords[i].y;
-        distance.push_back(distanceCalc(center, point));
-    }
-
-    //creating and filling the solution for the point
-    struct circleAttr solutionCircle;
-    solutionCircle.x = localArgs->x;
-    solutionCircle.y = localArgs->y;
-    solutionCircle.radius = smallestCircle(distance);
-
-    //lock the mutex so the vector isn't changed while its being read
-    pthread_mutex_lock(&solutionCheckMutex);
-    if (localArgs->validCircles->size() > 0)
-    {
-        //if there is already a value in the vector, check to see if its larger or smaller than the current one
-        if (localArgs->validCircles->operator[](localArgs->validCircles->size() - 1).radius > solutionCircle.radius)
+        
+        //parameter structs for distance
+        pthread_mutex_lock(&taskMutex);
+        //checking
+        if ((unsigned)*localArgs->currentTaskIterator >= localArgs->pointList->size())
         {
-            //add the smallest to the end
+            break;
+        }
+        else
+        {
+            center.x = localArgs->pointList->operator[](*localArgs->currentTaskIterator).x;
+            
+            center.y = localArgs->pointList->operator[](*localArgs->currentTaskIterator).y;
+            
+            *localArgs->currentTaskIterator += 1;
+        }
+        pthread_mutex_unlock(&taskMutex);
+        while(distance.size() > 0)
+        {
+            distance.pop_back();
+        }
+        //for collecting the distances from the center to each point in the distance
+
+        for (int i = 0; i < numbDistanceCalcs; i++)
+        {
+            point.x = localArgs->coords[i].x;
+            point.y = localArgs->coords[i].y;
+            distance.push_back(distanceCalc(center, point));
+        }
+
+        //creating and filling the solution for the point
+        struct circleAttr solutionCircle;
+        solutionCircle.x = center.x;
+        solutionCircle.y = center.y;
+        solutionCircle.radius = smallestCircle(distance);
+        
+
+        //lock the mutex so the vector isn't changed while its being read
+        pthread_mutex_lock(&solutionCheckMutex);
+        if (localArgs->validCircles->size() > 0)
+        {
+            
+            
+            //if there is already a value in the vector, check to see if its larger or smaller than the current one
+            if (localArgs->validCircles->operator[](localArgs->validCircles->size() - 1).radius > solutionCircle.radius)
+            {
+                
+                //add the smallest to the end
+                localArgs->validCircles->push_back(solutionCircle);
+            }
+        }
+        else
+        {
             localArgs->validCircles->push_back(solutionCircle);
         }
+        pthread_mutex_unlock(&solutionCheckMutex);
+        
     }
-    else
-    {
-        localArgs->validCircles->push_back(solutionCircle);
-    }
-    pthread_mutex_unlock(&solutionCheckMutex);
+    pthread_mutex_unlock(&taskMutex);
     pthread_exit(0);
 }
 
