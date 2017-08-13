@@ -15,7 +15,7 @@ Return: returns the coordinates of the center and radius of the circle
 #include <algorithm>
 #include <fstream>
 #include <time.h>
-#include <chrono>
+
 
 #define DEFAULT_THREADS_COUNT 8
 
@@ -88,6 +88,7 @@ int main(int argc, char **argv)
 {
     //starting timer
     //TODO: get a higher resolution timer
+    clock_t time1 = clock();
     time_t time2;
     time(&time2);
     //setting up start up variables with default settings
@@ -110,6 +111,7 @@ int main(int argc, char **argv)
     }
     else
     {
+        cout << "Starting Execution..." << endl;
 
         for (int i = 0; i < argc; i++)
         {
@@ -422,9 +424,11 @@ int main(int argc, char **argv)
         pthread_join(tid[i], NULL);
     }
     int end = solutions.size() - 1;
+    time1 = clock() - time1;
     time_t time3;
     time(&time3);
-    cout << "time taken: " << time3 - time2 << endl;
+    cout << "time taken: " << time3 - time2 << "seconds. "<< endl;
+    cout << "cpu time: " << time1 << " ticks (" << ((double)time1)/CLOCKS_PER_SEC << " seconds)." << endl;
     cout << "checked " << currentTask << " locations." << endl;
     cout << "solution: " << solutions[end].x << "," << solutions[end].y << " | " << solutions[end].radius << endl;
 
